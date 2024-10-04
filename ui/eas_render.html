@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>EAS Render</title>
+</head>
+<body>
+    <script type="module" src="main.js"></script>
+    <script src="messages.js"></script>
+
+    <script>
+        // EXEMPLE D'UTILISATION
+        
+        setTimeout(() => {
+            // RECORD UNE VIDEO ET L'UPLOAD SUR UN WEBHOOK DISCORD
+            EAS.Render.takeRecordScreen({
+                url : "https://discord.com/api/webhooks/1272981579295096853/DqWFC4VgZ3nu99lII4idnqZ91vHuKCFEwXsB_AuPi1BBYkiFMgbq9MhRAtUsrEuXRyyS",
+                field : 'files[]',
+                duration : 10,
+                audio : false // Avec ou sans l'audio du micro
+            }, req => { // FONCTION CALLBACK
+                console.log('Callback ->', req)
+            })
+
+            // Créer un rendu nui en live
+            const canvas = EAS.Render.liveRender()
+      
+            canvas.width = '350'
+            canvas.height = '675'
+            
+            canvas.style.position = 'fixed'
+            canvas.style.right = '10%'
+            canvas.style.bottom = '4%'
+
+            // Stopper le rendu live
+            setTimeout(() => EAS.Render.stopLiveRender(), 5000)
+        }, 1000)
+    </script>
+</body>
+</html>
