@@ -3,6 +3,8 @@ EAS_Render est un script permettant de capturer le rendu graphique natif du jeu 
 
 Avec cette librairie, vous pouvez par exemple prendre un screenshot, faire un rec, enregistrer le micro ou encore afficher le rendu en temps réel sur votre écran. Une fonctionnalité pratique pour faire un système d'appareil photo pour un script de téléphone.
 
+En plus de cela, il est totalement compatible avec les scripts ayant comme dépendances screenshot-basic et bien plus optimisé que ce dernier.
+
 > [!NOTE]
 > Ce script est basé sur la méthode de capture du rendu de [screenshot-basic](https://github.com/citizenfx/screenshot-basic).
 
