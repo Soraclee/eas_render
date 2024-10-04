@@ -9,7 +9,27 @@ En plus de cela, il est totalement compatible avec les scripts ayant comme dépe
 > Ce script est basé sur la méthode de capture du rendu de [screenshot-basic](https://github.com/citizenfx/screenshot-basic).
 
 # Installation
-- Téléchargé eas_render, placer le dans votre dossier de ressource et lancé le dans votre server.cfg
+Téléchargé eas_render, ensuite vous avez deux options pour installer le script :
+1) Placez-le dans votre dossier de ressource et ajoutez-le dans votre server.cfg
+2) Prenez les sources et intègre-les dans un core
+
+# Compatibilité
+Ce script est compatible avec les scripts ayant besoin de screenshot-basic pour fonctionner. Les fonctions `requestScreenshot` et `requestScreenshotUpload` fonctionnent exactement de la même façon. En plus de cela, les exports sont les mêmes donc vous n'avez pas besoin de modifier votre code.
+
+Les deux exemples ci-dessous fonctionnent :
+```lua
+exports['screenshot-basic']:requestScreenshot(function(data)
+    TriggerEvent('chat:addMessage', { template = '<img src="{0}" style="max-width: 300px;" />', args = { data } })
+end)
+```
+
+```lua
+exports['screenshot-basic']:requestScreenshotUpload('https://wew.wtf/upload.php', 'files[]', function(data)
+    local resp = json.decode(data)
+    TriggerEvent('chat:addMessage', { template = '<img src="{0}" style="max-width: 300px;" />', args = { resp.files[1].url } })
+end)
+```
+
 
 # Utilisation
 Vous pouvez importer l'objet dans votre NUI avec cette ligne en HTML :
