@@ -73,6 +73,14 @@ Pour prendre un screenshot et l'upload sur un lien custom :
 ---@param url string
 ---@param options table (Optionnel)
 
+-- Exemple d'options (Default Value) :
+options = {
+    encoding = 'png',
+    quality = 0.92,
+    field = 'files[]',
+    headers = {} -- Request Headers
+}
+
 -- Sans Callback
 local requestData = EAS_Render.TakeScreenShot(player --[[Server]], url, options)
 
