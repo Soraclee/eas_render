@@ -32,9 +32,52 @@ end)
 
 
 # Utilisation
+Pour l'utilisation des features, deux options s'offrent a vous :
+1) Travailler directement en JS dans le NUI
+2) Utiliser les exports directement depuis le Lua
+
+### Travailler directement en JS dans le NUI
 Vous pouvez importer l'objet dans votre NUI avec cette ligne en HTML :
 ```html
 <script type="module" src="nui://eas_render/ui/main.js"></script>
 ```
-
 Ou directement modifier le `eas_render.html`
+
+### Exports directement depuis le Lua
+Pour récupérer l'export vous avez juste à suivre l'exemple ci-dessous :
+
+```lua
+local EAS_Render = exports.eas_render:get()
+```
+
+Pour prendre un screenshot et récupèrer l'image en URI base64 :
+
+```lua
+--- Client
+---@param encoding string (Optionnel, Default : 'png')
+---@param quality number (Optionnel, Default : 0.92)
+
+-- Sans Callback
+local imgURI = EAS_Render.ScreenShot(encoding, quality)
+
+-- Avec Callback
+EAS_Render.ScreenShot(function(imgURI)
+    print(imgURI)
+end, encoding, quality)
+```
+
+Pour prendre un screenshot et l'upload sur un lien custom :
+```lua
+--- Client & Server
+---@param player number (NetId)
+---@param url string
+---@param options table (Optionnel)
+
+-- Sans Callback
+local requestData = EAS_Render.TakeScreenShot(player --[[Server]], url, options)
+
+-- Avec Callback
+EAS_Render.TakeScreenShot(player --[[Server]], url, options, function(requestData)
+    print(requestData)
+end)
+```
