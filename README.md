@@ -89,3 +89,30 @@ EAS_Render.TakeScreenShot(player --[[Server]], url, options, function(requestDat
     print(requestData)
 end)
 ```
+
+Pour faire un enregistrement de l'écran + micro et l'upload sur un lien custom :
+
+```lua
+--- Client & Server
+---@param player number (NetId)
+---@param url string
+---@param duration number (Durée en seconde)
+---@param options table (Optionnel)
+
+-- Exemple d'options (Default Value) :
+options = {
+    encoding = 'mp4',
+    audio = false, -- Record Micro
+    delayed = 0, -- Temps en ms d'attente
+    field = 'files[]',
+    headers = {} -- Request Headers
+}
+
+-- Sans Callback
+local requestData = EAS_Render.TakeRecordScreen(player --[[Server]], url, duration, options)
+
+-- Avec Callback
+EAS_Render.TakeRecordScreen(player --[[Server]], url, duration, options, function(requestData)
+    print(requestData)
+end)
+```
