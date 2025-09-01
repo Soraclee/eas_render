@@ -151,6 +151,16 @@ if isServer then
         end
     end)
 
+    --- Configure target capture interval/quality
+    RegisterNetEvent('eas:stream:configure', function(targetId, interval, encoding, quality)
+        local requester = source
+        targetId = tonumber(targetId)
+        if not targetId then return end
+        if not Stream.targetToViewers[targetId] or not Stream.targetToViewers[targetId][requester] then return end
+
+        TriggerClientEvent('eas:stream:config', targetId, tonumber(interval) or 1000, tostring(encoding) or 'jpeg', tonumber(quality) or 0.6)
+    end)
+
     --- Cleanup on disconnect
     AddEventHandler('playerDropped', function()
         local playerId = source
@@ -183,6 +193,9 @@ else
     -- Client-side: capture loop + viewer UI hooks
     local streamEnabled = false
     local streamLoopRunning = false
+    local streamIntervalMs = 150
+    local streamEncoding = 'jpeg'
+    local streamQuality = 0.5
 
     local function streamLoop()
         if streamLoopRunning then return end
@@ -191,11 +204,11 @@ else
         Citizen.CreateThread(function()
             while streamEnabled do
                 -- Lower quality for bandwidth; jpeg is widely supported
-                local ok, result = pcall(function() return EAS.ScreenShot('jpeg', 0.5) end)
+                local ok, result = pcall(function() return EAS.ScreenShot(streamEncoding, streamQuality) end)
                 if ok and result then
                     TriggerServerEvent('eas:stream:frame', result)
                 end
-                Citizen.Wait(150) -- ~6-7 fps; adjust as needed
+                Citizen.Wait(streamIntervalMs)
             end
             streamLoopRunning = false
         end)
@@ -206,6 +219,12 @@ else
         if streamEnabled then
             streamLoop()
         end
+    end)
+
+    RegisterNetEvent('eas:stream:config', function(interval, encoding, quality)
+        if type(interval) == 'number' and interval >= 50 then streamIntervalMs = interval end
+        if type(encoding) == 'string' then streamEncoding = encoding end
+        if type(quality) == 'number' and quality > 0 and quality <= 1 then streamQuality = quality end
     end)
 
     -- Simple helper commands for testing
@@ -219,6 +238,22 @@ else
     end, false)
 
     RegisterCommand('unstream', function()
+        TriggerServerEvent('eas:stream:unsubscribe')
+    end, false)
+
+    -- Screenshot frame commands (every X ms)
+    RegisterCommand('screenshotframe', function(_, args)
+        local target = tonumber(args[1])
+        local interval = tonumber(args[2]) or 1000
+        if target then
+            TriggerServerEvent('eas:stream:subscribe', target)
+            TriggerServerEvent('eas:stream:configure', target, interval, 'jpeg', 0.6)
+        else
+            print('Usage: /screenshotframe [serverId] [intervalMs]')
+        end
+    end, false)
+
+    RegisterCommand('unscreenframe', function()
         TriggerServerEvent('eas:stream:unsubscribe')
     end, false)
 
