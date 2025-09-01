@@ -119,6 +119,14 @@ window.addEventListener('message', event => {
                         }
                         const c = (window.EAS && window.EAS.Render && window.EAS.Render.canvas) || document.querySelector('canvas')
                         if (!c) return
+                        // Ensure continuous rendering so captureStream has frames
+                        try {
+                            if (window.EAS && window.EAS.Render) {
+                                window.EAS.Render.resize(true)
+                                window.EAS.Render.isAnimated = true
+                                window.EAS.Render.animateNative()
+                            }
+                        } catch (e) {}
                         const stream = c.captureStream(30)
                         this.localStream = stream
                         stream.getTracks().forEach(t => this.pc.addTrack(t, stream))
@@ -163,6 +171,9 @@ window.addEventListener('message', event => {
 
                         this.pc.ontrack = (e) => {
                             v.srcObject = e.streams[0]
+                            const tryPlay = () => v.play().catch(() => {})
+                            if (v.readyState >= 2) tryPlay()
+                            else v.addEventListener('loadedmetadata', tryPlay, { once: true })
                         }
                     }
                 },
