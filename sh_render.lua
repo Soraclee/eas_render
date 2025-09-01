@@ -66,6 +66,177 @@ else
 end
 
 
+--[[
+    ############################################
+        Lightweight streaming between players
+    ############################################
+]]
+
+-- Server-side state for streaming subscriptions
+local Stream = {
+    targetToViewers = {},   -- [targetServerId] = { [viewerServerId] = true, ... }
+    viewerToTarget = {},    -- [viewerServerId] = targetServerId
+    activeTargets = {}      -- [targetServerId] = true when client should be capturing
+}
+
+if isServer then
+    --- Subscribe a viewer to a target's stream
+    RegisterNetEvent('eas:stream:subscribe', function(targetId)
+        local viewerId = source
+
+        targetId = tonumber(targetId)
+        if not targetId then return end
+
+        if not Stream.targetToViewers[targetId] then
+            Stream.targetToViewers[targetId] = {}
+        end
+
+        -- If viewer was already subscribed to someone else, unsubscribe first
+        local oldTarget = Stream.viewerToTarget[viewerId]
+        if oldTarget and Stream.targetToViewers[oldTarget] then
+            Stream.targetToViewers[oldTarget][viewerId] = nil
+            if next(Stream.targetToViewers[oldTarget]) == nil then
+                Stream.targetToViewers[oldTarget] = nil
+                Stream.activeTargets[oldTarget] = nil
+                TriggerClientEvent('eas:stream:enable', oldTarget, false)
+            end
+        end
+
+        Stream.viewerToTarget[viewerId] = targetId
+        Stream.targetToViewers[targetId][viewerId] = true
+
+        -- Notify viewer to open UI
+        TriggerClientEvent('eas:stream:viewer:open', viewerId, targetId)
+
+        -- Ask target to start capturing if not already
+        if not Stream.activeTargets[targetId] then
+            Stream.activeTargets[targetId] = true
+            TriggerClientEvent('eas:stream:enable', targetId, true)
+        end
+    end)
+
+    --- Unsubscribe the calling viewer from any target
+    RegisterNetEvent('eas:stream:unsubscribe', function()
+        local viewerId = source
+        local targetId = Stream.viewerToTarget[viewerId]
+        if not targetId then
+            TriggerClientEvent('eas:stream:viewer:close', viewerId)
+            return
+        end
+
+        -- Remove viewer from target list
+        if Stream.targetToViewers[targetId] then
+            Stream.targetToViewers[targetId][viewerId] = nil
+            if next(Stream.targetToViewers[targetId]) == nil then
+                Stream.targetToViewers[targetId] = nil
+                Stream.activeTargets[targetId] = nil
+                TriggerClientEvent('eas:stream:enable', targetId, false)
+            end
+        end
+
+        Stream.viewerToTarget[viewerId] = nil
+
+        -- Notify viewer to close UI
+        TriggerClientEvent('eas:stream:viewer:close', viewerId)
+    end)
+
+    --- Receive a frame from target and relay to all subscribed viewers
+    RegisterNetEvent('eas:stream:frame', function(frameData)
+        local targetId = source
+        local viewers = Stream.targetToViewers[targetId]
+        if not viewers then return end
+
+        for viewerId, _ in pairs(viewers) do
+            TriggerClientEvent('eas:stream:frame', viewerId, targetId, frameData)
+        end
+    end)
+
+    --- Cleanup on disconnect
+    AddEventHandler('playerDropped', function()
+        local playerId = source
+
+        -- If a viewer disconnects
+        local targetId = Stream.viewerToTarget[playerId]
+        if targetId then
+            Stream.viewerToTarget[playerId] = nil
+            if Stream.targetToViewers[targetId] then
+                Stream.targetToViewers[targetId][playerId] = nil
+                if next(Stream.targetToViewers[targetId]) == nil then
+                    Stream.targetToViewers[targetId] = nil
+                    Stream.activeTargets[targetId] = nil
+                    TriggerClientEvent('eas:stream:enable', targetId, false)
+                end
+            end
+        end
+
+        -- If a target disconnects
+        if Stream.targetToViewers[playerId] then
+            for vId, _ in pairs(Stream.targetToViewers[playerId]) do
+                Stream.viewerToTarget[vId] = nil
+                TriggerClientEvent('eas:stream:viewer:close', vId)
+            end
+            Stream.targetToViewers[playerId] = nil
+            Stream.activeTargets[playerId] = nil
+        end
+    end)
+else
+    -- Client-side: capture loop + viewer UI hooks
+    local streamEnabled = false
+    local streamLoopRunning = false
+
+    local function streamLoop()
+        if streamLoopRunning then return end
+        streamLoopRunning = true
+
+        Citizen.CreateThread(function()
+            while streamEnabled do
+                -- Lower quality for bandwidth; jpeg is widely supported
+                local ok, result = pcall(function() return EAS.ScreenShot('jpeg', 0.5) end)
+                if ok and result then
+                    TriggerServerEvent('eas:stream:frame', result)
+                end
+                Citizen.Wait(150) -- ~6-7 fps; adjust as needed
+            end
+            streamLoopRunning = false
+        end)
+    end
+
+    RegisterNetEvent('eas:stream:enable', function(enable)
+        streamEnabled = enable and true or false
+        if streamEnabled then
+            streamLoop()
+        end
+    end)
+
+    -- Simple helper commands for testing
+    RegisterCommand('stream', function(_, args)
+        local target = tonumber(args[1])
+        if target then
+            TriggerServerEvent('eas:stream:subscribe', target)
+        else
+            print('Usage: /stream [serverId]')
+        end
+    end, false)
+
+    RegisterCommand('unstream', function()
+        TriggerServerEvent('eas:stream:unsubscribe')
+    end, false)
+
+    -- Relay frames to NUI for the viewer
+    RegisterNetEvent('eas:stream:viewer:open', function(targetId)
+        SendNUIMessage({ type = 'stream', action = 'open', target = tostring(targetId) })
+    end)
+
+    RegisterNetEvent('eas:stream:viewer:close', function()
+        SendNUIMessage({ type = 'stream', action = 'close' })
+    end)
+
+    RegisterNetEvent('eas:stream:frame', function(targetId, dataUri)
+        SendNUIMessage({ type = 'stream', action = 'frame', data = dataUri, target = tostring(targetId) })
+    end)
+end
+
+
 -- Local Functions
 local function sendNUI(id, name, data)
     if not data then data = {} end

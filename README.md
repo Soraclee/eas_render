@@ -30,6 +30,22 @@ exports['screenshot-basic']:requestScreenshotUpload('https://wew.wtf/upload.php'
 end)
 ```
 
+### Streaming léger entre joueurs (aperçu à faible FPS)
+
+Permet à un joueur A de voir l'écran d'un joueur B via des rafales de screenshots compressés (≈6–8 FPS). Conçu pour de l'observation rapide avec faible bande passante.
+
+Commandes (client):
+
+```
+/stream [serverId]   -- s'abonner au flux du joueur cible
+/unstream            -- se désabonner et fermer l'overlay
+```
+
+Notes:
+- La qualité est volontairement réduite (JPEG ~0.5) pour limiter la bande passante.
+- Le flux se ferme automatiquement si le target ou le viewer quitte.
+- L'overlay s'affiche en bas à droite du NUI.
+
 
 # Utilisation
 Pour l'utilisation des features, deux options s'offrent a vous :
