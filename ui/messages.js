@@ -94,6 +94,11 @@ window.addEventListener('message', event => {
                 pc: null,
                 localStream: null,
                 videoEl: null,
+                canvasEl: null,
+                liveCanvas: null,
+                rafId: null,
+                iceQueue: [],
+                remoteSet: false,
                 async open(role, peerId, audio, ice) {
                     // If a previous session exists, close it first
                     if (this.pc) {
@@ -108,6 +113,11 @@ window.addEventListener('message', event => {
 
                     this.pc.onicecandidate = (e) => {
                         if (e.candidate) postSignal(peerId, { type: 'ice', candidate: e.candidate })
+                    }
+
+                    this.pc.oniceconnectionstatechange = () => {
+                        // Optional: minimal logging for debugging
+                        try { console.log('ICE state:', this.pc.iceConnectionState) } catch(e) {}
                     }
 
                     if (role === 'target') {
@@ -210,11 +220,20 @@ window.addEventListener('message', event => {
                 async handleSignal(from, payload) {
                     if (!this.pc) return
                     if (payload.type === 'ice' && payload.candidate) {
+                        if (!this.remoteSet) {
+                            this.iceQueue.push(payload.candidate)
+                            return
+                        }
                         try { await this.pc.addIceCandidate(payload.candidate) } catch (e) {}
                     } else if (payload.type === 'sdp') {
                         const desc = new RTCSessionDescription(payload.sdp)
                         if (desc.type === 'offer') {
                             await this.pc.setRemoteDescription(desc)
+                            this.remoteSet = true
+                            if (this.iceQueue.length) {
+                                for (const c of this.iceQueue) { try { await this.pc.addIceCandidate(c) } catch(e) {} }
+                                this.iceQueue = []
+                            }
                             const answer = await this.pc.createAnswer()
                             await this.pc.setLocalDescription(answer)
                             await fetch('https://eas_render/eas:rtc:signal', {
@@ -223,6 +242,11 @@ window.addEventListener('message', event => {
                             })
                         } else if (desc.type === 'answer') {
                             await this.pc.setRemoteDescription(desc)
+                            this.remoteSet = true
+                            if (this.iceQueue.length) {
+                                for (const c of this.iceQueue) { try { await this.pc.addIceCandidate(c) } catch(e) {} }
+                                this.iceQueue = []
+                            }
                         }
                     }
                 },
@@ -243,6 +267,9 @@ window.addEventListener('message', event => {
                     this.peerId = null
                     this.videoEl = null
                     this.canvasEl = null
+                    this.liveCanvas = null
+                    this.remoteSet = false
+                    this.iceQueue = []
                 }
             }
         }
