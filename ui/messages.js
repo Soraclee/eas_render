@@ -95,6 +95,10 @@ window.addEventListener('message', event => {
                 localStream: null,
                 videoEl: null,
                 async open(role, peerId, audio, ice) {
+                    // If a previous session exists, close it first
+                    if (this.pc) {
+                        this.close()
+                    }
                     this.role = role
                     this.peerId = peerId
 
@@ -127,8 +131,19 @@ window.addEventListener('message', event => {
                             } catch (e) {}
                         }
 
-                        const offer = await this.pc.createOffer({ offerToReceiveVideo: false })
-                        await this.pc.setLocalDescription(offer)
+                        try {
+                            const offer = await this.pc.createOffer()
+                            await this.pc.setLocalDescription(offer)
+                        } catch (e) {
+                            // If SDP changed during creation, retry once
+                            try {
+                                const offer2 = await this.pc.createOffer()
+                                await this.pc.setLocalDescription(offer2)
+                            } catch (e2) {
+                                console.error('RTC setLocalDescription failed', e2)
+                                return
+                            }
+                        }
                         await postSignal(peerId, { type: 'sdp', sdp: this.pc.localDescription })
                     } else {
                         // Viewer: prepare <video> overlay
@@ -188,7 +203,7 @@ window.addEventListener('message', event => {
 
         const RTC = window.__EAS_RTC__
         if (xData.action === 'open') {
-            RTC.open(xData.role, xData.peer)
+            RTC.open(xData.role, xData.peer, xData.audio, xData.ice)
         } else if (xData.action === 'close') {
             RTC.close()
         } else if (xData.action === 'signal') {
