@@ -46,6 +46,32 @@ Notes:
 - Le flux se ferme automatiquement si le target ou le viewer quitte.
 - L'overlay s'affiche en bas à droite du NUI.
 
+### WebRTC (rendu canvas à haute fréquence)
+
+Permet un flux plus fluide (jusqu'à 30 FPS) en capturant le canvas NUI et en l'envoyant via WebRTC. Nécessite de pouvoir échanger les signaux (SDP/ICE) via les événements du script.
+
+Commandes (client):
+
+```
+/webrtc [serverId]   -- démarrer une session WebRTC avec la cible
+/unwebrtc            -- fermer la session WebRTC
+```
+
+Notes importantes:
+- Le STUN public de Google est inclus. Sans TURN, certains NAT stricts peuvent empêcher la connexion.
+- Le flux partage le canvas capturé par la NUI (rendu du jeu via `three.eas.js`).
+- Les performances dépendent du PC du joueur cible et de la résolution du canvas.
+
+Audio micro (optionnel):
+```
+/webrtc [serverId] audio
+```
+
+Convars serveur (dans server.cfg) pour configurer STUN:
+```
+setr eas_rtc_stun_urls "stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302"
+```
+
 
 # Utilisation
 Pour l'utilisation des features, deux options s'offrent a vous :

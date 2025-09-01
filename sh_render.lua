@@ -237,6 +237,153 @@ else
 end
 
 
+--[[
+    ############################################
+        WebRTC signaling for high-FPS canvas streaming
+    ############################################
+]]
+
+local Rtc = {
+    viewerToTarget = {},   -- [viewerId] = targetId
+    targetToViewers = {},  -- [targetId] = { [viewerId] = true }
+    viewerAudio = {}       -- [viewerId] = boolean (request mic audio)
+}
+
+local function splitCsv(str)
+    local t = {}
+    if not str or str == '' then return t end
+    for entry in string.gmatch(str, '([^,]+)') do
+        entry = string.gsub(entry, '^%s*(.-)%s*$', '%1')
+        table.insert(t, entry)
+    end
+    return t
+end
+
+local function buildIceServers()
+    local stunCsv = GetConvar and GetConvar('eas_rtc_stun_urls', 'stun:stun.l.google.com:19302') or 'stun:stun.l.google.com:19302'
+    local stunList = splitCsv(stunCsv)
+    if #stunList > 0 then
+        return { { urls = stunList } }
+    end
+    return { { urls = { 'stun:stun.l.google.com:19302' } } }
+end
+
+if isServer then
+    RegisterNetEvent('eas:rtc:subscribe', function(targetId, wantAudio)
+        local viewerId = source
+        targetId = tonumber(targetId)
+        if not targetId then return end
+
+        -- Unsubscribe previous
+        local oldTarget = Rtc.viewerToTarget[viewerId]
+        if oldTarget and Rtc.targetToViewers[oldTarget] then
+            Rtc.targetToViewers[oldTarget][viewerId] = nil
+            TriggerClientEvent('eas:rtc:close', oldTarget, viewerId)
+            TriggerClientEvent('eas:rtc:close', viewerId, oldTarget)
+        end
+
+        if not Rtc.targetToViewers[targetId] then
+            Rtc.targetToViewers[targetId] = {}
+        end
+
+        Rtc.viewerToTarget[viewerId] = targetId
+        Rtc.viewerAudio[viewerId] = (wantAudio == true)
+        Rtc.targetToViewers[targetId][viewerId] = true
+
+        local iceServers = buildIceServers()
+        -- Notify both peers to open RTC session (provide audio preference to target)
+        TriggerClientEvent('eas:rtc:open', targetId, 'target', viewerId, Rtc.viewerAudio[viewerId], iceServers)
+        TriggerClientEvent('eas:rtc:open', viewerId, 'viewer', targetId, false, iceServers)
+    end)
+
+    RegisterNetEvent('eas:rtc:unsubscribe', function()
+        local viewerId = source
+        local targetId = Rtc.viewerToTarget[viewerId]
+        if not targetId then return end
+
+        Rtc.viewerToTarget[viewerId] = nil
+        if Rtc.targetToViewers[targetId] then
+            Rtc.targetToViewers[targetId][viewerId] = nil
+        end
+
+        TriggerClientEvent('eas:rtc:close', targetId, viewerId)
+        TriggerClientEvent('eas:rtc:close', viewerId, targetId)
+        Rtc.viewerAudio[viewerId] = nil
+    end)
+
+    -- Relay SDP/ICE signals between peers
+    RegisterNetEvent('eas:rtc:signal', function(toId, payload)
+        toId = tonumber(toId)
+        if not toId then return end
+        local fromId = source
+        TriggerClientEvent('eas:rtc:signal', toId, fromId, payload)
+    end)
+
+    AddEventHandler('playerDropped', function()
+        local playerId = source
+
+        -- If viewer disconnects
+        local targetId = Rtc.viewerToTarget[playerId]
+        if targetId then
+            Rtc.viewerToTarget[playerId] = nil
+            Rtc.viewerAudio[playerId] = nil
+            if Rtc.targetToViewers[targetId] then
+                Rtc.targetToViewers[targetId][playerId] = nil
+                TriggerClientEvent('eas:rtc:close', targetId, playerId)
+            end
+        end
+
+        -- If target disconnects
+        if Rtc.targetToViewers[playerId] then
+            for vId, _ in pairs(Rtc.targetToViewers[playerId]) do
+                Rtc.viewerToTarget[vId] = nil
+                TriggerClientEvent('eas:rtc:close', vId, playerId)
+            end
+            Rtc.targetToViewers[playerId] = nil
+        end
+    end)
+else
+    -- Client: commands + NUI bridge for RTC
+    RegisterCommand('webrtc', function(_, args)
+        local target = tonumber(args[1])
+        local withAudio = false
+        if args[2] and (args[2] == 'audio' or args[2] == 'mic' or args[2] == 'a') then
+            withAudio = true
+        end
+        if target then
+            TriggerServerEvent('eas:rtc:subscribe', target, withAudio)
+        else
+            print('Usage: /webrtc [serverId] [audio]')
+        end
+    end, false)
+
+    RegisterCommand('unwebrtc', function()
+        TriggerServerEvent('eas:rtc:unsubscribe')
+    end, false)
+
+    -- Open/close session on UI
+    RegisterNetEvent('eas:rtc:open', function(role, peerId, audio, iceServers)
+        SendNUIMessage({ type = 'rtc', action = 'open', role = role, peer = tostring(peerId), audio = audio, ice = iceServers })
+    end)
+
+    RegisterNetEvent('eas:rtc:close', function(peerId)
+        SendNUIMessage({ type = 'rtc', action = 'close', peer = tostring(peerId) })
+    end)
+
+    RegisterNetEvent('eas:rtc:signal', function(fromId, payload)
+        SendNUIMessage({ type = 'rtc', action = 'signal', from = tostring(fromId), data = payload })
+    end)
+
+    -- NUI -> Client -> Server signaling
+    RegisterNuiCallback('eas:rtc:signal', function(data, cb)
+        cb(true)
+        if data and data.to and data.payload then
+            TriggerServerEvent('eas:rtc:signal', tonumber(data.to), data.payload)
+        end
+    end)
+end
+
+
 -- Local Functions
 local function sendNUI(id, name, data)
     if not data then data = {} end
