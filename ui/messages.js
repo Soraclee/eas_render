@@ -94,16 +94,13 @@ window.addEventListener('message', event => {
                 pc: null,
                 localStream: null,
                 videoEl: null,
-                async open(role, peerId) {
+                async open(role, peerId, audio, ice) {
                     this.role = role
                     this.peerId = peerId
 
                     // Create RTCPeerConnection
-                    this.pc = new RTCPeerConnection({
-                        iceServers: [
-                            { urls: 'stun:stun.l.google.com:19302' }
-                        ]
-                    })
+                    const defaultIce = [{ urls: ['stun:stun.l.google.com:19302'] }]
+                    this.pc = new RTCPeerConnection({ iceServers: (ice && ice.length ? ice : defaultIce) })
 
                     this.pc.onicecandidate = (e) => {
                         if (e.candidate) postSignal(peerId, { type: 'ice', candidate: e.candidate })
@@ -121,6 +118,14 @@ window.addEventListener('message', event => {
                         const stream = c.captureStream(30)
                         this.localStream = stream
                         stream.getTracks().forEach(t => this.pc.addTrack(t, stream))
+
+                        // Optionally attach microphone
+                        if (audio) {
+                            try {
+                                const mic = await navigator.mediaDevices.getUserMedia({ audio: true })
+                                mic.getAudioTracks().forEach(t => this.pc.addTrack(t, mic))
+                            } catch (e) {}
+                        }
 
                         const offer = await this.pc.createOffer({ offerToReceiveVideo: false })
                         await this.pc.setLocalDescription(offer)

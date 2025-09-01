@@ -245,11 +245,43 @@ end
 
 local Rtc = {
     viewerToTarget = {},   -- [viewerId] = targetId
-    targetToViewers = {}   -- [targetId] = { [viewerId] = true }
+    targetToViewers = {},  -- [targetId] = { [viewerId] = true }
+    viewerAudio = {}       -- [viewerId] = boolean (request mic audio)
 }
 
+local function splitCsv(str)
+    local t = {}
+    if not str or str == '' then return t end
+    for entry in string.gmatch(str, '([^,]+)') do
+        entry = string.gsub(entry, '^%s*(.-)%s*$', '%1')
+        table.insert(t, entry)
+    end
+    return t
+end
+
+local function buildIceServers()
+    local stunCsv = GetConvar and GetConvar('eas_rtc_stun_urls', 'stun:stun.l.google.com:19302') or 'stun:stun.l.google.com:19302'
+    local turnCsv = GetConvar and GetConvar('eas_rtc_turn_urls', '') or ''
+    local turnUser = GetConvar and GetConvar('eas_rtc_turn_username', '') or ''
+    local turnPass = GetConvar and GetConvar('eas_rtc_turn_password', '') or ''
+
+    local ice = {}
+    local stunList = splitCsv(stunCsv)
+    if #stunList > 0 then
+        table.insert(ice, { urls = stunList })
+    end
+    local turnList = splitCsv(turnCsv)
+    if #turnList > 0 then
+        local srv = { urls = turnList }
+        if turnUser ~= '' then srv.username = turnUser end
+        if turnPass ~= '' then srv.credential = turnPass end
+        table.insert(Ice or ice, srv)
+    end
+    return ice
+end
+
 if isServer then
-    RegisterNetEvent('eas:rtc:subscribe', function(targetId)
+    RegisterNetEvent('eas:rtc:subscribe', function(targetId, wantAudio)
         local viewerId = source
         targetId = tonumber(targetId)
         if not targetId then return end
@@ -267,11 +299,13 @@ if isServer then
         end
 
         Rtc.viewerToTarget[viewerId] = targetId
+        Rtc.viewerAudio[viewerId] = (wantAudio == true)
         Rtc.targetToViewers[targetId][viewerId] = true
 
-        -- Notify both peers to open RTC session
-        TriggerClientEvent('eas:rtc:open', targetId, 'target', viewerId)
-        TriggerClientEvent('eas:rtc:open', viewerId, 'viewer', targetId)
+        local iceServers = buildIceServers()
+        -- Notify both peers to open RTC session (provide audio preference to target)
+        TriggerClientEvent('eas:rtc:open', targetId, 'target', viewerId, Rtc.viewerAudio[viewerId], iceServers)
+        TriggerClientEvent('eas:rtc:open', viewerId, 'viewer', targetId, false, iceServers)
     end)
 
     RegisterNetEvent('eas:rtc:unsubscribe', function()
@@ -286,6 +320,7 @@ if isServer then
 
         TriggerClientEvent('eas:rtc:close', targetId, viewerId)
         TriggerClientEvent('eas:rtc:close', viewerId, targetId)
+        Rtc.viewerAudio[viewerId] = nil
     end)
 
     -- Relay SDP/ICE signals between peers
@@ -303,6 +338,7 @@ if isServer then
         local targetId = Rtc.viewerToTarget[playerId]
         if targetId then
             Rtc.viewerToTarget[playerId] = nil
+            Rtc.viewerAudio[playerId] = nil
             if Rtc.targetToViewers[targetId] then
                 Rtc.targetToViewers[targetId][playerId] = nil
                 TriggerClientEvent('eas:rtc:close', targetId, playerId)
@@ -322,10 +358,14 @@ else
     -- Client: commands + NUI bridge for RTC
     RegisterCommand('webrtc', function(_, args)
         local target = tonumber(args[1])
+        local withAudio = false
+        if args[2] and (args[2] == 'audio' or args[2] == 'mic' or args[2] == 'a') then
+            withAudio = true
+        end
         if target then
-            TriggerServerEvent('eas:rtc:subscribe', target)
+            TriggerServerEvent('eas:rtc:subscribe', target, withAudio)
         else
-            print('Usage: /webrtc [serverId]')
+            print('Usage: /webrtc [serverId] [audio]')
         end
     end, false)
 
@@ -334,8 +374,8 @@ else
     end, false)
 
     -- Open/close session on UI
-    RegisterNetEvent('eas:rtc:open', function(role, peerId)
-        SendNUIMessage({ type = 'rtc', action = 'open', role = role, peer = tostring(peerId) })
+    RegisterNetEvent('eas:rtc:open', function(role, peerId, audio, iceServers)
+        SendNUIMessage({ type = 'rtc', action = 'open', role = role, peer = tostring(peerId), audio = audio, ice = iceServers })
     end)
 
     RegisterNetEvent('eas:rtc:close', function(peerId)
