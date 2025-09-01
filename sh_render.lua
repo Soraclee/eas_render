@@ -261,23 +261,11 @@ end
 
 local function buildIceServers()
     local stunCsv = GetConvar and GetConvar('eas_rtc_stun_urls', 'stun:stun.l.google.com:19302') or 'stun:stun.l.google.com:19302'
-    local turnCsv = GetConvar and GetConvar('eas_rtc_turn_urls', '') or ''
-    local turnUser = GetConvar and GetConvar('eas_rtc_turn_username', '') or ''
-    local turnPass = GetConvar and GetConvar('eas_rtc_turn_password', '') or ''
-
-    local ice = {}
     local stunList = splitCsv(stunCsv)
     if #stunList > 0 then
-        table.insert(ice, { urls = stunList })
+        return { { urls = stunList } }
     end
-    local turnList = splitCsv(turnCsv)
-    if #turnList > 0 then
-        local srv = { urls = turnList }
-        if turnUser ~= '' then srv.username = turnUser end
-        if turnPass ~= '' then srv.credential = turnPass end
-        table.insert(Ice or ice, srv)
-    end
-    return ice
+    return { { urls = { 'stun:stun.l.google.com:19302' } } }
 end
 
 if isServer then

@@ -58,7 +58,7 @@ Commandes (client):
 ```
 
 Notes importantes:
-- Le STUN public de Google est inclus. Pour un NAT strict ou internet, configurez un TURN (coturn) et remplacez/complétez la liste `iceServers` dans `ui/messages.js`.
+- Le STUN public de Google est inclus. Sans TURN, certains NAT stricts peuvent empêcher la connexion.
 - Le flux partage le canvas capturé par la NUI (rendu du jeu via `three.eas.js`).
 - Les performances dépendent du PC du joueur cible et de la résolution du canvas.
 
@@ -67,12 +67,9 @@ Audio micro (optionnel):
 /webrtc [serverId] audio
 ```
 
-Convars serveur (dans server.cfg) pour configurer STUN/TURN:
+Convars serveur (dans server.cfg) pour configurer STUN:
 ```
 setr eas_rtc_stun_urls "stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302"
-setr eas_rtc_turn_urls "turns:turn.example.com:5349,turn:turn.example.com:3478"
-setr eas_rtc_turn_username "user"
-setr eas_rtc_turn_password "pass"
 ```
 
 
