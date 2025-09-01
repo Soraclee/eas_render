@@ -154,24 +154,50 @@ window.addEventListener('message', event => {
                         }
                         await postSignal(peerId, { type: 'sdp', sdp: this.pc.localDescription })
                     } else {
-                        // Viewer: prepare <video> overlay
+                        // Viewer: render remote stream into a canvas overlay
+                        const canvas = document.createElement('canvas')
+                        canvas.id = 'eas_rtc_canvas'
+                        canvas.style.position = 'fixed'
+                        canvas.style.right = '2%'
+                        canvas.style.bottom = '2%'
+                        canvas.style.width = '420px'
+                        canvas.style.height = 'auto'
+                        canvas.style.zIndex = '9999'
+                        canvas.style.borderRadius = '6px'
+                        canvas.style.background = 'black'
+                        document.body.appendChild(canvas)
+                        this.canvasEl = canvas
+
+                        // Hidden video element to receive the MediaStream
                         const v = document.createElement('video')
                         v.autoplay = true
                         v.muted = true
                         v.playsInline = true
-                        v.style.position = 'fixed'
-                        v.style.right = '2%'
-                        v.style.bottom = '2%'
-                        v.style.width = '420px'
-                        v.style.zIndex = '9999'
-                        v.style.borderRadius = '6px'
-                        v.style.background = 'black'
+                        v.style.display = 'none'
                         document.body.appendChild(v)
                         this.videoEl = v
 
+                        const ctx = canvas.getContext('2d')
+                        const startRender = () => {
+                            // Size canvas with aspect ratio of the video, target width ~420px
+                            const targetW = 420
+                            const vw = v.videoWidth || targetW
+                            const vh = v.videoHeight || (targetW * 9 / 16)
+                            const ratio = vh / vw
+                            canvas.width = targetW
+                            canvas.height = Math.round(targetW * ratio)
+
+                            const render = () => {
+                                if (!this.canvasEl || !this.videoEl) return
+                                try { ctx.drawImage(v, 0, 0, canvas.width, canvas.height) } catch(e) {}
+                                this.rafId = requestAnimationFrame(render)
+                            }
+                            render()
+                        }
+
                         this.pc.ontrack = (e) => {
                             v.srcObject = e.streams[0]
-                            const tryPlay = () => v.play().catch(() => {})
+                            const tryPlay = () => v.play().then(startRender).catch(() => startRender())
                             if (v.readyState >= 2) tryPlay()
                             else v.addEventListener('loadedmetadata', tryPlay, { once: true })
                         }
@@ -197,7 +223,9 @@ window.addEventListener('message', event => {
                     }
                 },
                 close() {
+                    if (this.rafId) { try { cancelAnimationFrame(this.rafId) } catch(e) {} this.rafId = null }
                     try { if (this.videoEl) this.videoEl.remove() } catch(e) {}
+                    try { if (this.canvasEl) this.canvasEl.remove() } catch(e) {}
                     if (this.localStream) {
                         this.localStream.getTracks().forEach(t => t.stop())
                         this.localStream = null
@@ -208,6 +236,8 @@ window.addEventListener('message', event => {
                     }
                     this.role = null
                     this.peerId = null
+                    this.videoEl = null
+                    this.canvasEl = null
                 }
             }
         }
