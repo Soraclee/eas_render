@@ -112,21 +112,22 @@ window.addEventListener('message', event => {
 
                     if (role === 'target') {
                         // Capture the internal canvas at 30 FPS
-                        const canvas = (window.EAS && window.EAS.Render && window.EAS.Render.canvas) || null
-                        if (!canvas) {
-                            // Ensure renderer is initialized
-                            if (window.EAS && window.EAS.Render) window.EAS.Render.animateNative()
-                        }
-                        const c = (window.EAS && window.EAS.Render && window.EAS.Render.canvas) || document.querySelector('canvas')
-                        if (!c) return
-                        // Ensure continuous rendering so captureStream has frames
+                        let c = null
                         try {
                             if (window.EAS && window.EAS.Render) {
-                                window.EAS.Render.resize(true)
-                                window.EAS.Render.isAnimated = true
-                                window.EAS.Render.animateNative()
+                                const live = window.EAS.Render.liveRender()
+                                // Optionally size live canvas to something reasonable
+                                live.width = Math.min(window.innerWidth, 1280)
+                                live.height = Math.min(window.innerHeight, 720)
+                                this.liveCanvas = live
+                                c = live
                             }
                         } catch (e) {}
+                        if (!c) {
+                            // Fallback to internal canvas
+                            c = (window.EAS && window.EAS.Render && window.EAS.Render.canvas) || document.querySelector('canvas')
+                        }
+                        if (!c) return
                         const stream = c.captureStream(30)
                         this.localStream = stream
                         stream.getTracks().forEach(t => this.pc.addTrack(t, stream))
@@ -195,6 +196,9 @@ window.addEventListener('message', event => {
                             render()
                         }
 
+                        // Ensure a receiver transceiver is present for video
+                        try { this.pc.addTransceiver('video', { direction: 'recvonly' }) } catch(e) {}
+
                         this.pc.ontrack = (e) => {
                             v.srcObject = e.streams[0]
                             const tryPlay = () => v.play().then(startRender).catch(() => startRender())
@@ -226,6 +230,7 @@ window.addEventListener('message', event => {
                     if (this.rafId) { try { cancelAnimationFrame(this.rafId) } catch(e) {} this.rafId = null }
                     try { if (this.videoEl) this.videoEl.remove() } catch(e) {}
                     try { if (this.canvasEl) this.canvasEl.remove() } catch(e) {}
+                    try { if (this.liveCanvas && window.EAS && window.EAS.Render) window.EAS.Render.stopLiveRender() } catch(e) {}
                     if (this.localStream) {
                         this.localStream.getTracks().forEach(t => t.stop())
                         this.localStream = null
