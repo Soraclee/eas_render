@@ -79,5 +79,115 @@ window.addEventListener('message', event => {
         } else if (xData.action === 'frame') {
             StreamUI.frame(xData.data)
         }
+    } else if (xData.type === 'rtc') {
+        // Minimal WebRTC manager
+        if (!window.__EAS_RTC__) {
+            const postSignal = (to, payload) => fetch('https://eas_render/eas:rtc:signal', {
+                method: 'POST',
+                mode: 'cors',
+                body: JSON.stringify({ to: to, payload: payload })
+            })
+
+            window.__EAS_RTC__ = {
+                role: null,
+                peerId: null,
+                pc: null,
+                localStream: null,
+                videoEl: null,
+                async open(role, peerId) {
+                    this.role = role
+                    this.peerId = peerId
+
+                    // Create RTCPeerConnection
+                    this.pc = new RTCPeerConnection({
+                        iceServers: [
+                            { urls: 'stun:stun.l.google.com:19302' }
+                        ]
+                    })
+
+                    this.pc.onicecandidate = (e) => {
+                        if (e.candidate) postSignal(peerId, { type: 'ice', candidate: e.candidate })
+                    }
+
+                    if (role === 'target') {
+                        // Capture the internal canvas at 30 FPS
+                        const canvas = (window.EAS && window.EAS.Render && window.EAS.Render.canvas) || null
+                        if (!canvas) {
+                            // Ensure renderer is initialized
+                            if (window.EAS && window.EAS.Render) window.EAS.Render.animateNative()
+                        }
+                        const c = (window.EAS && window.EAS.Render && window.EAS.Render.canvas) || document.querySelector('canvas')
+                        if (!c) return
+                        const stream = c.captureStream(30)
+                        this.localStream = stream
+                        stream.getTracks().forEach(t => this.pc.addTrack(t, stream))
+
+                        const offer = await this.pc.createOffer({ offerToReceiveVideo: false })
+                        await this.pc.setLocalDescription(offer)
+                        await postSignal(peerId, { type: 'sdp', sdp: this.pc.localDescription })
+                    } else {
+                        // Viewer: prepare <video> overlay
+                        const v = document.createElement('video')
+                        v.autoplay = true
+                        v.muted = true
+                        v.playsInline = true
+                        v.style.position = 'fixed'
+                        v.style.right = '2%'
+                        v.style.bottom = '2%'
+                        v.style.width = '420px'
+                        v.style.zIndex = '9999'
+                        v.style.borderRadius = '6px'
+                        v.style.background = 'black'
+                        document.body.appendChild(v)
+                        this.videoEl = v
+
+                        this.pc.ontrack = (e) => {
+                            v.srcObject = e.streams[0]
+                        }
+                    }
+                },
+                async handleSignal(from, payload) {
+                    if (!this.pc) return
+                    if (payload.type === 'ice' && payload.candidate) {
+                        try { await this.pc.addIceCandidate(payload.candidate) } catch (e) {}
+                    } else if (payload.type === 'sdp') {
+                        const desc = new RTCSessionDescription(payload.sdp)
+                        if (desc.type === 'offer') {
+                            await this.pc.setRemoteDescription(desc)
+                            const answer = await this.pc.createAnswer()
+                            await this.pc.setLocalDescription(answer)
+                            await fetch('https://eas_render/eas:rtc:signal', {
+                                method: 'POST', mode: 'cors',
+                                body: JSON.stringify({ to: from, payload: { type: 'sdp', sdp: this.pc.localDescription } })
+                            })
+                        } else if (desc.type === 'answer') {
+                            await this.pc.setRemoteDescription(desc)
+                        }
+                    }
+                },
+                close() {
+                    try { if (this.videoEl) this.videoEl.remove() } catch(e) {}
+                    if (this.localStream) {
+                        this.localStream.getTracks().forEach(t => t.stop())
+                        this.localStream = null
+                    }
+                    if (this.pc) {
+                        try { this.pc.ontrack = null; this.pc.onicecandidate = null; this.pc.close() } catch(e) {}
+                        this.pc = null
+                    }
+                    this.role = null
+                    this.peerId = null
+                }
+            }
+        }
+
+        const RTC = window.__EAS_RTC__
+        if (xData.action === 'open') {
+            RTC.open(xData.role, xData.peer)
+        } else if (xData.action === 'close') {
+            RTC.close()
+        } else if (xData.action === 'signal') {
+            RTC.handleSignal(xData.from, xData.data)
+        }
     }
 })
